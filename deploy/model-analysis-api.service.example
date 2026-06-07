@@ -1,0 +1,16 @@
+[Unit]
+Description=Model Analysis API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/model-analysis-api
+EnvironmentFile=/opt/model-analysis-api/.env
+ExecStart=/opt/model-analysis-api/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT}
+Restart=always
+RestartSec=5
+User=ec2-user
+Group=ec2-user
+
+[Install]
+WantedBy=multi-user.target

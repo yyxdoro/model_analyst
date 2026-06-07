@@ -1,0 +1,13 @@
+.env
+.venv/
+.venv39/
+.venv312/
+__pycache__/
+**/__pycache__/
+*.pyc
+.DS_Store
+
+downloads/
+samples/models/
+temp_uploads/
+test_result.json
