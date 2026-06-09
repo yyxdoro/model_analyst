@@ -26,8 +26,8 @@ def quality_status_from_analysis(analysis_data: dict[str, Any]) -> dict[str, Any
     reasons = []
     severity = "green"
 
-    if faces > 1_000_000:
-        reasons.append(f"面数超过 1,000,000（当前 {faces}）")
+    if faces > 2_000_000:
+        reasons.append(f"面数超过 2,000,000（当前 {faces}）")
         severity = "red"
     elif faces > 100_000:
         reasons.append(f"面数超过 100,000（当前 {faces}）")

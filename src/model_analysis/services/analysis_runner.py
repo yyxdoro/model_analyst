@@ -42,18 +42,19 @@ async def run_blender_analysis(file_path: Path, asset_dir: Optional[Path] = None
     return json.loads(json_text)
 
 
-def _attach_asset_urls(value, task_id: str) -> None:
+def _attach_asset_urls(value, task_id: str, public_base_url: str = "") -> None:
     if isinstance(value, dict):
         asset_file = value.get("asset_file")
         if isinstance(asset_file, str) and asset_file:
-            value["url"] = f"{ASSET_ROUTE}/{task_id}/{asset_file}"
+            path = f"{ASSET_ROUTE}/{task_id}/{asset_file}"
+            value["url"] = f"{public_base_url}{path}" if public_base_url else path
         value.pop("asset_path", None)
         value.pop("abspath", None)
         for child in value.values():
-            _attach_asset_urls(child, task_id)
+            _attach_asset_urls(child, task_id, public_base_url)
     elif isinstance(value, list):
         for child in value:
-            _attach_asset_urls(child, task_id)
+            _attach_asset_urls(child, task_id, public_base_url)
 
 
 def _engine_error(engine: str, exc: Exception, default_code: str) -> dict[str, str]:
@@ -110,7 +111,7 @@ def _merge_analysis(native: Optional[dict[str, Any]], blender: Optional[dict[str
     }
 
 
-async def run_model_analysis(file_path: Path, asset_dir: Optional[Path] = None, task_id: Optional[str] = None) -> tuple[str, dict]:
+async def run_model_analysis(file_path: Path, asset_dir: Optional[Path] = None, task_id: Optional[str] = None, public_base_url: str = "") -> tuple[str, dict]:
     native = None
     blender = None
     errors: list[dict[str, str]] = []
@@ -137,5 +138,5 @@ async def run_model_analysis(file_path: Path, asset_dir: Optional[Path] = None, 
 
     analysis = _merge_analysis(native, blender, engine, errors)
     if task_id:
-        _attach_asset_urls(analysis, task_id)
+        _attach_asset_urls(analysis, task_id, public_base_url)
     return engine, analysis

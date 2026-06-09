@@ -5,11 +5,11 @@ import shutil
 import uuid
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 from model_analysis.api.schemas import AnalyzeRequest
-from model_analysis.core.config import ASSET_DIR, ASSET_ROUTE, MAX_CONCURRENT_JOBS, TASK_RETENTION_SECONDS
+from model_analysis.core.config import ASSET_DIR, ASSET_ROUTE, MAX_CONCURRENT_JOBS, PUBLIC_BASE_URL, TASK_RETENTION_SECONDS
 from model_analysis.expert.skill import analyze_with_3d_expert_skill
 from model_analysis.services.analysis_runner import run_model_analysis
 from model_analysis.services.downloader import download_model
@@ -201,7 +201,7 @@ def _build_report(source_url: str, file_name: str, engine: str, analysis: dict[s
     }
 
 
-async def _process_analysis_task(task_id: str, source_url: str) -> None:
+async def _process_analysis_task(task_id: str, source_url: str, public_base_url: str) -> None:
     local_path = None
     await update_task(task_id, status="pending", message="任务已进入队列，等待分析资源")
     async with _job_semaphore:
@@ -210,7 +210,7 @@ async def _process_analysis_task(task_id: str, source_url: str) -> None:
             local_path, file_name = await download_model(source_url)
             await update_task(task_id, message="模型下载完成，正在分析")
             task_asset_dir = ASSET_DIR / task_id
-            engine, analysis_data = await run_model_analysis(local_path, task_asset_dir, task_id)
+            engine, analysis_data = await run_model_analysis(local_path, task_asset_dir, task_id, public_base_url)
             finished_at = now()
             standard = quality_status_from_analysis(analysis_data)
             expert_result = analyze_with_3d_expert_skill(analysis_data, standard)
@@ -263,12 +263,13 @@ async def root():
 
 
 @app.post("/analyze", status_code=202)
-async def submit_analysis(request: AnalyzeRequest):
+async def submit_analysis(request: Request, payload: AnalyzeRequest):
     await cleanup_finished_tasks()
-    source_url = str(request.url)
+    source_url = str(payload.url)
     task_id = str(uuid.uuid4())
+    public_base_url = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
     await create_task(task_id, source_url)
-    asyncio.create_task(_process_analysis_task(task_id, source_url))
+    asyncio.create_task(_process_analysis_task(task_id, source_url, public_base_url))
     return {
         "task_id": task_id,
         "status": "pending",

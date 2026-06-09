@@ -35,6 +35,18 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8000
 curl http://127.0.0.1:8000/
 ```
 
+当前服务器访问地址：
+
+```text
+http://34.219.48.53:8000
+```
+
+远程健康检查：
+
+```bash
+curl http://34.219.48.53:8000/
+```
+
 ## 本地样例冒烟测试
 
 ```bash
@@ -112,6 +124,7 @@ BLENDER_BIN=/usr/local/bin/blender
 DOWNLOAD_DIR=downloads
 ASSET_DIR=downloads/assets
 TASK_RETENTION_SECONDS=86400
+PUBLIC_BASE_URL=http://34.219.48.53:8000
 ```
 
 不要把真实 `.env` 提交到 git。
@@ -158,6 +171,8 @@ sudo systemctl restart nginx
 
 ## 接口文档
 
+- 服务地址：`http://34.219.48.53:8000`
+- Swagger UI：`http://34.219.48.53:8000/docs`
 - API：`docs/API.md`
 - 专业指标：`docs/metrics.md`
 

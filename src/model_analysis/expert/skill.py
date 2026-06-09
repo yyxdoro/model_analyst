@@ -33,7 +33,7 @@ EXPERT_SKILL = {
             "title": "网格质量指标",
             "purpose": "评估三角面形态和分布均匀度，影响重拓扑、简化、仿真计算和渲染稳定性。",
             "metrics": [
-                {"name": "face_vertex_count", "label": "面数与顶点数", "standard": "面数≤100,000为常规可控；100,000~1,000,000为偏重需优化；>1,000,000为高风险重模型。", "severity": "major", "analysis_fields": ["faces", "triangles", "vertices"]},
+                {"name": "face_vertex_count", "label": "面数与顶点数", "standard": "面数≤100,000为常规可控；100,000~2,000,000为偏重需优化；>2,000,000为高风险重模型。", "severity": "major", "analysis_fields": ["faces", "triangles", "vertices"]},
                 {"name": "triangle_shape", "label": "三角面形态", "standard": "工业通用建议长宽比≤5优秀、≤10合格、>10劣质；内角建议保持在15°~150°。当前分析结果如未提供该项，应标记为未检测。", "severity": "moderate", "analysis_fields": ["aspect_ratio", "angle"]},
                 {"name": "uv_quality", "label": "UV质量", "standard": "有材质贴图的模型应具备UV；UV零面积面越少越好，UV坐标范围应合理。", "severity": "moderate", "analysis_fields": ["has_uv", "uv.zero_uv_area_faces", "uv.uv_bounds"]},
                 {"name": "mesh_components", "label": "连通组件", "standard": "单体模型通常应保持较少连通组件；组件数量异常增多说明存在碎片或未合并部件。", "severity": "moderate", "analysis_fields": ["component_count_python"]},
@@ -323,8 +323,8 @@ def _evaluate(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     if normal_problem_count > 0:
         issues.append(_issue("normal_consistency", "warning", "法向一致性存在风险，可能出现光照发黑或表面显示异常", {"bad_normal_alignment_vertices": metrics["bad_normal_alignment_vertices"], "opposite_normal_vertices": metrics["opposite_normal_vertices"]}, "建议统一法向朝向并重新计算顶点/面法向，必要时检查局部反面。"))
 
-    if metrics["faces"] > 1_000_000:
-        issues.append(_issue("face_vertex_count", "fail", "面数超过百万，属于高风险重模型", {"faces": metrics["faces"], "vertices": metrics["vertices"]}, "建议进行重拓扑或分级LOD，优先保留轮廓和高曲率区域细节。"))
+    if metrics["faces"] > 2_000_000:
+        issues.append(_issue("face_vertex_count", "fail", "面数超过 200 万，属于高风险重模型", {"faces": metrics["faces"], "vertices": metrics["vertices"]}, "建议进行重拓扑或分级LOD，优先保留轮廓和高曲率区域细节。"))
     elif metrics["faces"] > 100_000:
         issues.append(_issue("face_vertex_count", "warning", "面数超过十万，渲染和传输成本偏高", {"faces": metrics["faces"], "vertices": metrics["vertices"]}, "建议评估目标平台预算，必要时做减面、合批或LOD。"))
 
@@ -426,7 +426,7 @@ def _structure_conclusion(metrics: dict[str, Any]) -> str:
     faces = metrics["faces"]
     if faces <= 100_000:
         parts.append(f"面数 {faces:,}，体量较轻，适合实时预览、Web/移动端展示和常规编辑。")
-    elif faces <= 1_000_000:
+    elif faces <= 2_000_000:
         parts.append(f"面数 {faces:,}，属于中高复杂度模型，实时渲染和传输成本需要评估。")
     else:
         parts.append(f"面数 {faces:,}，属于高风险重模型，建议先做减面或LOD。")
@@ -467,7 +467,7 @@ def _impact_analysis(metrics: dict[str, Any]) -> list[dict[str, Any]]:
         "evidence": {"non_manifold_edge_count": metrics["non_manifold_edge_count"], "boundary_edge_count": metrics["boundary_edge_count"], "zero_or_degenerate_faces": metrics["zero_area_faces"] + metrics["degenerate_face_count"]},
     })
 
-    render_level = "pass" if metrics["faces"] <= 100_000 else "warning" if metrics["faces"] <= 1_000_000 else "fail"
+    render_level = "pass" if metrics["faces"] <= 100_000 else "warning" if metrics["faces"] <= 2_000_000 else "fail"
     impacts.append({
         "area": "render_performance",
         "title": "渲染与传输影响",

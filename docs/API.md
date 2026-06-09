@@ -2,6 +2,8 @@
 
 ## 服务说明
 
+当前部署访问地址：`http://34.219.48.53:8000`
+
 服务用于分析单个远程 3D 模型文件。客户端提交模型 `url` 后，服务异步下载文件并分析；客户端通过任务状态接口轮询获取结果。
 
 分析成功后，服务会自动触发内置 `professional_3d_modeling_expert` 专家 skill。该 skill 基于 `docs/metrics.md` 中的专业指标体系，将模型分析结果转换为专业 3D 建模质检结论，并与固定标准、标准化报告、原始分析结果一起返回。
@@ -85,7 +87,7 @@ Content-Type: application/json
 ### curl 示例
 
 ```bash
-curl -X POST http://127.0.0.1:8000/analyze \
+curl -X POST http://34.219.48.53:8000/analyze \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://example.com/model.glb"}'
 ```
@@ -156,8 +158,8 @@ GET /tasks/{task_id}
         "non_manifold_edge_count": 0,
         "zero_area_faces": 0
       },
-      "reasons": ["面数超过 1,000,000（当前 1445656）"],
-      "reason_text": "面数超过 1,000,000（当前 1445656）"
+      "reasons": ["面数超过 2,000,000（当前 2445656）"],
+      "reason_text": "面数超过 2,000,000（当前 2445656）"
     },
     "expert_analysis": {
       "passed": false,
@@ -194,7 +196,7 @@ GET /tasks/{task_id}
               "image_name": "BaseColor",
               "resolution": [2048, 2048],
               "clarity": "2K",
-              "url": "/assets/0c92e9c7-9bb3-496d-9e64-9af5d4587c4a/Body_Base_Color_BaseColor.png",
+              "url": "http://34.219.48.53:8000/assets/0c92e9c7-9bb3-496d-9e64-9af5d4587c4a/Body_Base_Color_BaseColor.png",
               "asset_file": "Body_Base_Color_BaseColor.png"
             }
           ]
@@ -208,7 +210,7 @@ GET /tasks/{task_id}
           "non_manifold_edge_count": 0,
           "zero_area_faces": 0
         },
-        "reasons": ["面数超过 1,000,000（当前 1445656）"]
+        "reasons": ["面数超过 2,000,000（当前 2445656）"]
       },
       "professional_analysis": {
         "conclusion": "模型未完全满足专业3D质量标准...",
@@ -255,7 +257,7 @@ GET /tasks/{task_id}
 
 - 标准化贴图链接位于 `result.report.materials[].textures[].url`
 - 原始 Blender 贴图链接位于 `result.result.analysis.materials[].textures[].image.url`
-- 链接为服务内临时静态资源地址，例如 `/assets/{task_id}/{asset_file}`
+- 链接为完整可访问 URL，例如 `http://34.219.48.53:8000/assets/{task_id}/{asset_file}`
 - 贴图链接与任务结果默认保留 24 小时
 - 如果 Blender 失败但 native 成功，任务仍可成功，但只返回贴图引用名，不返回导出的 `/assets/...` 图片链接
 - API 不返回贴图的本地绝对路径
@@ -385,5 +387,6 @@ python -m pip install -r requirements.txt
 | `MAX_DOWNLOAD_BYTES` | `314572800` | 单文件最大下载字节数 |
 | `MAX_CONCURRENT_JOBS` | `10` | 最大并发分析任务数 |
 | `TASK_RETENTION_SECONDS` | `86400` | 成功/失败任务结果保留时间 |
+| `PUBLIC_BASE_URL` | 空 | 对外可访问服务地址；配置后材质贴图返回完整 URL，例如 `http://34.219.48.53:8000/assets/...` |
 | `BLENDER_BIN` | `/Applications/Blender.app/Contents/MacOS/Blender` | Blender 可执行文件路径 |
 | `PORT` | `8000` | `python main.py` 启动端口 |
