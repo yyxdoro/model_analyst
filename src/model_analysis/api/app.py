@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -166,11 +166,87 @@ def _first_mesh_value(meshes: list[dict[str, Any]], key: str) -> Any:
     return values[0] if len(values) == 1 else values
 
 
+def _summary_source_meshes(analysis: dict[str, Any]) -> list[dict[str, Any]]:
+    blender = analysis.get("blender") if isinstance(analysis.get("blender"), dict) else {}
+    blender_meshes = blender.get("meshes") if isinstance(blender.get("meshes"), list) else []
+    if blender_meshes:
+        return blender_meshes
+    return analysis.get("meshes") if isinstance(analysis.get("meshes"), list) else []
+
+
+def _mesh_number(mesh: dict[str, Any], key: str) -> int:
+    try:
+        return int(mesh.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _mesh_bool_any(meshes: list[dict[str, Any]], *keys: str) -> bool:
+    return any(any(bool(mesh.get(key)) for key in keys) for mesh in meshes if isinstance(mesh, dict))
+
+
+def _mesh_bool_all(meshes: list[dict[str, Any]], key: str) -> Optional[bool]:
+    values = [bool(mesh.get(key)) for mesh in meshes if isinstance(mesh, dict) and mesh.get(key) is not None]
+    if not values:
+        return None
+    return all(values)
+
+
+def _bounds_value(meshes: list[dict[str, Any]], axis: str) -> Optional[float]:
+    values = []
+    for mesh in meshes:
+        if not isinstance(mesh, dict):
+            continue
+        bounds = mesh.get("bounds") if isinstance(mesh.get("bounds"), dict) else None
+        dimensions = mesh.get("dimensions") if isinstance(mesh.get("dimensions"), dict) else None
+        value = (bounds or dimensions or {}).get(axis)
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+    if not values:
+        return None
+    return round(max(values), 4)
+
+
+def _summary_parameters(analysis: dict[str, Any], computed: dict[str, Any]) -> dict[str, Any]:
+    meshes = _summary_source_meshes(analysis)
+    armatures = analysis.get("armatures") if isinstance(analysis.get("armatures"), list) else []
+    animations = analysis.get("animations") if isinstance(analysis.get("animations"), list) else []
+    faces = computed.get("faces") if computed.get("faces") is not None else sum(_mesh_number(mesh, "faces") for mesh in meshes)
+    vertices = computed.get("vertices") if computed.get("vertices") is not None else sum(_mesh_number(mesh, "vertices") for mesh in meshes)
+    armature_count = computed.get("armature_count") if computed.get("armature_count") is not None else len(armatures)
+    animation_count = computed.get("animation_count") if computed.get("animation_count") is not None else len(animations)
+    bone_count = computed.get("bone_count") if computed.get("bone_count") is not None else sum(_mesh_number(armature, "bones") for armature in armatures)
+    textures = computed.get("has_texture_model")
+    pbr = computed.get("has_pbr_model")
+    return {
+        "textures": bool(textures),
+        "pbr": bool(pbr),
+        "quad_mesh": _mesh_bool_all(meshes, "quad_mesh"),
+        "low_poly": faces < 10000,
+        "uv_export": _mesh_bool_any(meshes, "uv_export", "has_uv"),
+        "armature": bool(armature_count),
+        "armature_count": armature_count,
+        "bone_count": bone_count,
+        "animations": bool(animation_count),
+        "animation_count": animation_count,
+        "has_normals": _mesh_bool_any(meshes, "has_normals", "has_custom_normals"),
+        "normals_valid": _mesh_bool_all(meshes, "normals_valid"),
+        "vertices": vertices,
+        "faces": faces,
+        "bounds": {
+            "x": _bounds_value(meshes, "x"),
+            "y": _bounds_value(meshes, "y"),
+            "z": _bounds_value(meshes, "z"),
+        },
+    }
+
+
 def _build_summary(source_url: str, file_name: str, engine: str, analysis: dict[str, Any], standard: dict[str, Any], expert: dict[str, Any], finished_at: float) -> dict[str, Any]:
     summary = analysis.get("summary") if isinstance(analysis.get("summary"), dict) else {}
     meshes = analysis.get("meshes") if isinstance(analysis.get("meshes"), list) else []
     computed = expert.get("computed_metrics") or {}
     model_type_profile = expert.get("model_type_profile") or {}
+    parameters = _summary_parameters(analysis, computed)
     return {
         "model": {
             "source_url": source_url,
@@ -179,6 +255,7 @@ def _build_summary(source_url: str, file_name: str, engine: str, analysis: dict[
             "asset_retention_seconds": TASK_RETENTION_SECONDS,
             "assets_expires_at": finished_at + TASK_RETENTION_SECONDS,
         },
+        "parameters": parameters,
         "counts": {
             "mesh_count": computed.get("mesh_count") or summary.get("mesh_count"),
             "vertices": computed.get("vertices") or summary.get("total_vertices"),

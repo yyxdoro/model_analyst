@@ -299,16 +299,38 @@ def analyze_mesh(obj):
     except Exception:
         inward_ratio = None
     
+    face_vertex_counts = [len(p.vertices) for p in mesh.polygons]
+    normal_count = 0
+    zero_normals = 0
+    try:
+        normal_count = len(mesh.vertex_normals)
+        zero_normals = sum(1 for n in mesh.vertex_normals if n.vector.length <= 1e-8)
+    except Exception:
+        normal_count = 0
+        zero_normals = 0
+
     stats = {
         "name": obj.name,
         "vertices": len(mesh.vertices),
         "faces": len(mesh.polygons),
-        "triangles": sum(len(p.vertices) - 2 for p in mesh.polygons),
+        "triangles": sum(count - 2 for count in face_vertex_counts),
+        "bounds": {
+            "x": round(size.x, 4),
+            "y": round(size.y, 4),
+            "z": round(size.z, 4)
+        },
         "dimensions": {
             "x": round(size.x, 4),
             "y": round(size.y, 4),
             "z": round(size.z, 4)
         },
+        "quad_mesh": bool(face_vertex_counts) and all(count == 4 for count in face_vertex_counts),
+        "low_poly": len(mesh.polygons) < 10000,
+        "uv_export": len(mesh.uv_layers) > 0,
+        "has_normals": normal_count > 0,
+        "normals_valid": normal_count > 0 and zero_normals == 0,
+        "normal_count": normal_count,
+        "zero_normal_count": zero_normals,
         "has_uv": len(mesh.uv_layers) > 0,
         "zero_area_faces": sum(1 for p in mesh.polygons if p.area < 0.000001),
         "is_manifold": is_manifold,
