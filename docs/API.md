@@ -92,6 +92,21 @@ curl -X POST http://34.219.48.53:8000/analyze \
   -d '{"url":"https://example.com/model.glb"}'
 ```
 
+### 请求参数
+
+| 字段 | 类型 | 必填 | 含义 |
+| --- | --- | --- | --- |
+| `url` | string | 是 | 需要分析的远程 3D 模型文件 URL；只支持公网 `http/https`，不允许本机、内网或保留地址。 |
+
+### 返回字段
+
+| 字段 | 类型 | 含义 |
+| --- | --- | --- |
+| `task_id` | string | 后台分析任务 ID，后续用它查询任务状态。 |
+| `status` | string | 初始任务状态，提交成功后通常为 `pending`。 |
+| `poll_url` | string | 查询任务状态的相对路径，客户端轮询该地址直到 `succeeded` 或 `failed`。 |
+| `message` | string | 当前任务提示信息。 |
+
 ### 成功响应
 
 HTTP 状态码：`202 Accepted`
@@ -112,6 +127,27 @@ HTTP 状态码：`202 Accepted`
 ```http
 GET /tasks/{task_id}
 ```
+
+### 查询参数
+
+| 参数 | 类型 | 必填 | 含义 |
+| --- | --- | --- | --- |
+| `task_id` | string | 是 | 提交任务时返回的任务 ID。任务过期或不存在时返回 404。 |
+
+### 通用返回字段
+
+| 字段 | 类型 | 含义 |
+| --- | --- | --- |
+| `task_id` | string | 任务 ID。 |
+| `status` | string | 当前任务状态：`pending`、`running`、`succeeded` 或 `failed`。 |
+| `source_url` | string | 提交分析时传入的原始模型 URL。 |
+| `created_at` | number | 任务创建时间，Unix 时间戳，单位秒。 |
+| `updated_at` | number | 任务最近更新时间，Unix 时间戳，单位秒。 |
+| `started_at` | number/null | 实际开始处理时间；排队中可能为空。 |
+| `finished_at` | number/null | 任务完成时间；未完成时为空。 |
+| `message` | string | 当前任务处理状态说明。 |
+| `result` | object | 分析成功后的完整结果，仅 `succeeded` 时返回。 |
+| `error` | object | 分析失败后的错误信息，仅 `failed` 时返回。 |
 
 ### 状态说明
 
@@ -136,6 +172,170 @@ GET /tasks/{task_id}
 }
 ```
 
+### succeeded 结果读取顺序
+
+建议调用方按以下顺序读取成功结果：
+
+1. `result.summary`：当前模型已有参数概览，适合列表页、卡片和快速判断。
+2. `result.quality` + `result.professional_analysis`：基础判定和专业结论。
+3. `result.geometry` + `result.materials`：几何、材质、贴图展示详情。
+4. `result.details`：补充指标、专家标准和原始分析数据，适合调试或深度集成。
+
+### succeeded 核心结果字段说明
+
+| 字段路径 | 类型 | 含义 |
+| --- | --- | --- |
+| `result.summary` | object | 当前模型已有参数概览，放在成功结果最上方。 |
+| `result.quality` | object | 基础标准化判定，适合快速判断是否命中硬性规则。 |
+| `result.professional_analysis` | object | 专家质检结论、问题列表、影响分析和覆盖说明。 |
+| `result.geometry` | object | 标准化几何信息。 |
+| `result.materials` | array | 标准化材质和贴图信息。 |
+| `result.validation` | object | 报告内部一致性校验结果。 |
+| `result.details` | object | 放在结果底部的补充详情，包含专家指标、标准和原始分析数据。 |
+
+### `result.summary` 字段说明
+
+| 字段路径 | 类型 | 含义 |
+| --- | --- | --- |
+| `summary.model.source_url` | string | 原始模型 URL。 |
+| `summary.model.file_name` | string | 下载或解析出的模型文件名。 |
+| `summary.model.analysis_engine` | string | 本次使用的分析引擎：`hybrid`、`native` 或 `blender_fallback`。 |
+| `summary.model.asset_retention_seconds` | number | 材质贴图和任务结果保留秒数。 |
+| `summary.model.assets_expires_at` | number | 材质贴图过期时间，Unix 时间戳，单位秒。 |
+| `summary.counts.mesh_count` | number/null | mesh 数量。 |
+| `summary.counts.vertices` | number/null | 总顶点数。 |
+| `summary.counts.faces` | number/null | 总面数。当前红线为 `faces > 2,000,000`。 |
+| `summary.counts.triangles` | number/null | 总三角面数。 |
+| `summary.counts.material_count` | number/null | 材质数量。 |
+| `summary.counts.texture_count` | number/null | 贴图通道数量。 |
+| `summary.counts.armature_count` | number/null | 骨架数量。 |
+| `summary.counts.animation_count` | number/null | 动画数量。 |
+| `summary.quality.is_standard` | boolean | 是否通过基础标准规则。 |
+| `summary.quality.label` | string | 中文判定标签，例如 `标准` / `不标准`。 |
+| `summary.quality.severity` | string | 基础严重级别：`green`、`yellow`、`red`。 |
+| `summary.quality.reason_text` | string | 命中规则原因的中文合并文本。 |
+| `summary.professional.passed` | boolean | 是否通过专家专业检查。 |
+| `summary.professional.level` | string | 专家最高问题等级：`pass`、`notice`、`warning`、`fail`。 |
+| `summary.professional.detected_types` | array | 识别出的中文模型类型列表。 |
+| `summary.model_types.white_mesh_model` | boolean/null | 是否为白模/基础网格模型。 |
+| `summary.model_types.rigged_model` | boolean/null | 是否为绑骨模型。 |
+| `summary.model_types.animated_model` | boolean/null | 是否为动画模型。 |
+| `summary.model_types.textured_model` | boolean/null | 是否为贴图模型。 |
+| `summary.model_types.pbr_model` | boolean/null | 是否为 PBR 材质模型。 |
+| `summary.model_types.multi_part_model` | boolean/null | 是否为分 part / 多 mesh 模型。 |
+| `summary.model_types.detected_types` | array | 识别出的中文模型类型列表。 |
+| `summary.geometry_flags.has_uv` | boolean | 是否检测到 UV。 |
+| `summary.geometry_flags.is_manifold` | boolean/array/null | mesh 是否为流形；单 mesh 返回布尔值，多 mesh 返回数组。 |
+| `summary.geometry_flags.non_manifold_edge_count` | number/null | 非流形边数量。 |
+| `summary.geometry_flags.boundary_edge_count` | number/null | 边界/开口边数量。 |
+| `summary.geometry_flags.zero_area_faces` | number/null | 零面积面数量。 |
+| `summary.geometry_flags.self_intersection_count` | number/null | 自相交数量。 |
+| `summary.geometry_flags.component_count` | number/null | 连通组件数量。 |
+| `summary.material_flags.has_texture_model` | boolean/null | 是否识别为贴图模型。 |
+| `summary.material_flags.has_pbr_model` | boolean/null | 是否识别为 PBR 材质模型。 |
+| `summary.material_flags.pbr_channels` | object/null | PBR 通道存在性，例如 `base_color`、`normal`、`roughness`、`metallic`。 |
+| `summary.material_flags.texture_channels` | array | 检测到的贴图通道列表。 |
+| `summary.material_flags.missing_image_count` | number/null | 缺失贴图数量。 |
+| `summary.material_flags.unused_image_count` | number/null | 未使用贴图数量。 |
+
+### `result.quality` 字段说明
+
+| 字段路径 | 类型 | 含义 |
+| --- | --- | --- |
+| `quality.is_standard` | boolean | 是否通过基础标准规则。 |
+| `quality.label` | string | 中文判定标签。 |
+| `quality.severity` | string | 基础严重级别。 |
+| `quality.rules` | array | 当前启用的基础规则列表。 |
+| `quality.metrics.faces` | number | 模型总面数。 |
+| `quality.metrics.non_manifold_edge_count` | number | 非流形边数量。 |
+| `quality.metrics.zero_area_faces` | number | 零面积面数量。 |
+| `quality.reasons` | array | 命中的基础规则原因列表。 |
+| `quality.reason_text` | string | `reasons` 的中文合并文本。 |
+
+### `result.professional_analysis` 字段说明
+
+| 字段路径 | 类型 | 含义 |
+| --- | --- | --- |
+| `professional_analysis.passed` | boolean | 是否通过专家专业检查。 |
+| `professional_analysis.level` | string | 专家最高问题等级。 |
+| `professional_analysis.conclusion` | string | 面向人阅读的完整专业结论。 |
+| `professional_analysis.model_type_profile` | object | 模型类型识别结果。 |
+| `professional_analysis.model_type_profile.detected_types` | array | 识别出的中文模型类型列表。 |
+| `professional_analysis.structure_conclusion` | string | 针对结构、面数、边界、组件、贴图等的简短结论。 |
+| `professional_analysis.impact_analysis` | array | 按影响面归类的分析，例如拓扑结构、渲染传输、材质贴图。 |
+| `professional_analysis.issues` | array | 检测到的问题列表，每项包含指标名、等级、证据和修复建议。 |
+| `professional_analysis.coverage_notes` | array | 当前分析覆盖范围说明。 |
+
+### `result.geometry` 字段说明
+
+| 字段路径 | 类型 | 含义 |
+| --- | --- | --- |
+| `geometry.mesh_count` | number | mesh 数量。 |
+| `geometry.vertices` | number | 总顶点数。 |
+| `geometry.faces` | number | 总面数。 |
+| `geometry.triangles` | number | 总三角面数。 |
+| `geometry.meshes[]` | array | 每个 mesh 的基础几何信息。 |
+| `geometry.meshes[].name` | string/null | mesh 名称。 |
+| `geometry.meshes[].dimensions` | object/null | mesh 包围盒尺寸。 |
+| `geometry.meshes[].has_uv` | boolean/null | 是否检测到 UV。 |
+| `geometry.meshes[].is_manifold` | boolean/null | 是否为流形网格。 |
+| `geometry.meshes[].non_manifold_edge_count` | number/null | 该 mesh 的非流形边数量。 |
+| `geometry.meshes[].boundary_edge_count` | number/null | 该 mesh 的边界/开口边数量。 |
+| `geometry.meshes[].zero_area_faces` | number/null | 该 mesh 的零面积面数量。 |
+| `geometry.meshes[].loose_edge_count` | number/null | 游离边数量。 |
+| `geometry.meshes[].inward_normal_ratio` | number/null | 内翻法向比例；未检测时为空。 |
+| `geometry.meshes[].has_custom_normals` | boolean/null | 是否包含自定义法向。 |
+
+### `result.materials` 字段说明
+
+| 字段路径 | 类型 | 含义 |
+| --- | --- | --- |
+| `materials[]` | array | 材质列表。 |
+| `materials[].name` | string/null | 材质名称。 |
+| `materials[].texture_count` | number | 当前材质识别到的贴图通道数量。 |
+| `materials[].textures[]` | array | 当前材质的贴图通道列表。 |
+| `materials[].textures[].channel` | string/null | 贴图通道，例如 `Base Color`、`Normal`、`Roughness`、`Metallic`。 |
+| `materials[].textures[].image_name` | string/null | 图片资源在模型中的名称。 |
+| `materials[].textures[].source_file` | string/null | 外部贴图源文件路径；打包贴图通常为空。 |
+| `materials[].textures[].packed` | boolean/null | 贴图是否打包在模型文件内。 |
+| `materials[].textures[].resolution` | array/null | 贴图分辨率 `[width, height]`。 |
+| `materials[].textures[].clarity` | string/null | 分辨率等级，例如 `2K`。 |
+| `materials[].textures[].colorspace` | string/null | 色彩空间，例如 `sRGB` 或 `Non-Color`。 |
+| `materials[].textures[].url` | string/null | 导出的贴图访问 URL。配置 `PUBLIC_BASE_URL` 后为完整可访问链接。 |
+| `materials[].textures[].asset_file` | string/null | 服务端临时导出的贴图文件名。 |
+| `materials[].textures[].asset_error` | string/null | 贴图导出错误；为空表示导出正常。 |
+| `materials[].pbr_params` | object/null | 材质 PBR 参数。 |
+| `materials[].alpha` | object/null | 透明相关信息。 |
+| `materials[].displacement` | object/null | 置换相关信息。 |
+| `materials[].unused_images` | array | 未使用图片节点列表。 |
+
+### `result.validation` 字段说明
+
+| 字段路径 | 类型 | 含义 |
+| --- | --- | --- |
+| `validation.geometry_matches_computed_metrics` | boolean | `geometry` 是否与专家汇总指标一致。 |
+| `validation.quality_metrics_match_geometry` | boolean | 基础质量指标是否与几何统计一致。 |
+| `validation.texture_count_matches_materials` | boolean | 贴图数量是否与材质列表统计一致。 |
+| `validation.analysis_engine` | string | 本次使用的分析引擎。 |
+| `validation.passed` | boolean | 上述校验是否全部通过。 |
+
+### `result.details` 字段说明
+
+| 字段路径 | 类型 | 含义 |
+| --- | --- | --- |
+| `details.computed_metrics` | object | 专家分析汇总指标，包含面数、顶点数、边界边、自相交、材质贴图、骨架动画等。 |
+| `details.texture_resolution_summary` | array | 贴图分辨率摘要，包含材质名、通道、图片名、分辨率和可访问 URL。 |
+| `details.expert_skill` | object | 专家规则/能力描述，用于说明专业分析依据。 |
+| `details.expert_standard` | object | 专家标准说明，包括准入基线、通过条件和指标组。 |
+| `details.raw_analysis` | object | hybrid 合并后的原始分析数据。 |
+| `details.raw_analysis.engines` | object | native/Blender 实际使用情况。 |
+| `details.raw_analysis.analysis_errors` | array | 某个分析引擎失败但任务仍成功时的错误列表。 |
+| `details.raw_analysis.summary` | object | 原始汇总指标。 |
+| `details.raw_analysis.meshes` | array | 原始 mesh 指标列表。 |
+| `details.raw_analysis.materials` | array | 原始材质/贴图分析列表。 |
+| `details.raw_analysis.armatures` | array | 骨架数据列表。 |
+| `details.raw_analysis.animations` | array | 动画数据列表。 |
+
 ### succeeded 响应结构
 
 ```json
@@ -149,19 +349,91 @@ GET /tasks/{task_id}
   "finished_at": 1791199510.34,
   "message": "分析完成，下载缓存已删除",
   "result": {
-    "standard": {
+    "summary": {
+      "model": {
+        "source_url": "https://example.com/model.glb",
+        "file_name": "model.glb",
+        "analysis_engine": "hybrid",
+        "asset_retention_seconds": 86400,
+        "assets_expires_at": 1791285910.34
+      },
+      "counts": {
+        "mesh_count": 1,
+        "vertices": 750256,
+        "faces": 2445656,
+        "triangles": 2445656,
+        "material_count": 1,
+        "texture_count": 4,
+        "armature_count": 0,
+        "animation_count": 0
+      },
+      "quality": {
+        "is_standard": false,
+        "label": "不标准",
+        "severity": "red",
+        "reason_text": "面数超过 2,000,000（当前 2445656）"
+      },
+      "professional": {
+        "passed": false,
+        "level": "fail",
+        "detected_types": ["贴图模型", "PBR材质模型"]
+      },
+      "model_types": {
+        "white_mesh_model": false,
+        "rigged_model": false,
+        "animated_model": false,
+        "textured_model": true,
+        "pbr_model": true,
+        "multi_part_model": false,
+        "detected_types": ["贴图模型", "PBR材质模型"]
+      },
+      "geometry_flags": {
+        "has_uv": true,
+        "is_manifold": false,
+        "non_manifold_edge_count": 0,
+        "boundary_edge_count": 45594,
+        "zero_area_faces": 0,
+        "self_intersection_count": 135,
+        "component_count": 128
+      },
+      "material_flags": {
+        "has_texture_model": true,
+        "has_pbr_model": true,
+        "pbr_channels": {
+          "base_color": true,
+          "normal": true,
+          "roughness": true,
+          "metallic": true
+        },
+        "texture_channels": ["base_color", "metallic", "normal", "roughness"],
+        "missing_image_count": 0,
+        "unused_image_count": 0
+      },
+      "rig_animation_flags": {
+        "has_rigged_model": false,
+        "has_animation": false,
+        "armature_count": 0,
+        "bone_count": 0,
+        "animation_count": 0,
+        "animation_frame_count": 0,
+        "weight_mesh_count": 0,
+        "non_normalized_weight_vertices": 0,
+        "zero_weight_vertices": 0
+      }
+    },
+    "quality": {
       "is_standard": false,
       "label": "不标准",
       "severity": "red",
       "metrics": {
-        "faces": 1445656,
+        "faces": 2445656,
         "non_manifold_edge_count": 0,
         "zero_area_faces": 0
       },
       "reasons": ["面数超过 2,000,000（当前 2445656）"],
       "reason_text": "面数超过 2,000,000（当前 2445656）"
     },
-    "expert_analysis": {
+    "professional_analysis": {
       "passed": false,
       "level": "fail",
       "conclusion": "模型未完全满足专业3D质量标准...",
@@ -170,69 +442,47 @@ GET /tasks/{task_id}
         "pbr_model": true,
         "detected_types": ["贴图模型", "PBR材质模型"]
       },
+      "structure_conclusion": "面数 2,445,656，属于高风险重模型...",
+      "impact_analysis": [],
       "issues": [],
       "coverage_notes": []
     },
-    "report": {
-      "model": {
-        "source_url": "https://example.com/model.glb",
-        "file_name": "model.glb",
-        "analysis_engine": "hybrid"
-      },
-      "geometry": {
-        "mesh_count": 1,
-        "vertices": 750256,
-        "faces": 1445656,
-        "triangles": 1445656,
-        "meshes": []
-      },
-      "materials": [
-        {
-          "name": "Body",
-          "texture_count": 4,
-          "textures": [
-            {
-              "channel": "Base Color",
-              "image_name": "BaseColor",
-              "resolution": [2048, 2048],
-              "clarity": "2K",
-              "url": "http://34.219.48.53:8000/assets/0c92e9c7-9bb3-496d-9e64-9af5d4587c4a/Body_Base_Color_BaseColor.png",
-              "asset_file": "Body_Base_Color_BaseColor.png"
-            }
-          ]
-        }
-      ],
-      "quality": {
-        "label": "不标准",
-        "severity": "red",
-        "metrics": {
-          "faces": 1445656,
-          "non_manifold_edge_count": 0,
-          "zero_area_faces": 0
-        },
-        "reasons": ["面数超过 2,000,000（当前 2445656）"]
-      },
-      "professional_analysis": {
-        "conclusion": "模型未完全满足专业3D质量标准...",
-        "impact_analysis": [],
-        "issues": [],
-        "coverage_notes": []
-      },
-      "validation": {
-        "geometry_matches_computed_metrics": true,
-        "quality_metrics_match_geometry": true,
-        "texture_count_matches_materials": true,
-        "analysis_engine": "hybrid",
-        "passed": true
-      }
+    "geometry": {
+      "mesh_count": 1,
+      "vertices": 750256,
+      "faces": 2445656,
+      "triangles": 2445656,
+      "meshes": []
     },
-    "result": {
-      "source_url": "https://example.com/model.glb",
-      "file_name": "model.glb",
+    "materials": [
+      {
+        "name": "Body",
+        "texture_count": 4,
+        "textures": [
+          {
+            "channel": "Base Color",
+            "image_name": "BaseColor",
+            "resolution": [2048, 2048],
+            "clarity": "2K",
+            "url": "http://34.219.48.53:8000/assets/0c92e9c7-9bb3-496d-9e64-9af5d4587c4a/Body_Base_Color_BaseColor.png",
+            "asset_file": "Body_Base_Color_BaseColor.png"
+          }
+        ]
+      }
+    ],
+    "validation": {
+      "geometry_matches_computed_metrics": true,
+      "quality_metrics_match_geometry": true,
+      "texture_count_matches_materials": true,
       "analysis_engine": "hybrid",
-      "asset_retention_seconds": 86400,
-      "assets_expires_at": 1791285910.34,
-      "analysis": {
+      "passed": true
+    },
+    "details": {
+      "computed_metrics": {},
+      "texture_resolution_summary": [],
+      "expert_skill": {},
+      "expert_standard": {},
+      "raw_analysis": {
         "analyzer": "hybrid_native_blender",
         "engines": {
           "primary": "hybrid",
@@ -240,8 +490,6 @@ GET /tasks/{task_id}
           "materials": "blender"
         },
         "analysis_errors": [],
-        "native": {},
-        "blender": {},
         "summary": {},
         "meshes": [],
         "materials": [],
@@ -255,8 +503,8 @@ GET /tasks/{task_id}
 
 ### 贴图链接说明
 
-- 标准化贴图链接位于 `result.report.materials[].textures[].url`
-- 原始 Blender 贴图链接位于 `result.result.analysis.materials[].textures[].image.url`
+- 标准化贴图链接位于 `result.materials[].textures[].url`
+- 原始 Blender 贴图链接位于 `result.details.raw_analysis.materials[].textures[].image.url`
 - 链接为完整可访问 URL，例如 `http://34.219.48.53:8000/assets/{task_id}/{asset_file}`
 - 贴图链接与任务结果默认保留 24 小时
 - 如果 Blender 失败但 native 成功，任务仍可成功，但只返回贴图引用名，不返回导出的 `/assets/...` 图片链接
@@ -281,6 +529,18 @@ GET /tasks/{task_id}
   }
 }
 ```
+
+### failed 字段说明
+
+| 字段路径 | 类型 | 含义 |
+| --- | --- | --- |
+| `error.code` | string | 机器可读错误码，见下方错误码表。 |
+| `error.message` | string | 面向用户展示的中文错误信息。 |
+| `error.detail` | string | 更具体的错误细节，便于排查。 |
+| `error.engine_errors` | array | native/Blender 分析阶段的子错误列表；仅分析引擎失败时可能出现。 |
+| `error.engine_errors[].engine` | string | 出错的分析引擎，例如 `native` 或 `blender`。 |
+| `error.engine_errors[].code` | string | 子错误码。 |
+| `error.engine_errors[].message` | string | 子错误信息。 |
 
 当 native 和 Blender 都失败时：
 

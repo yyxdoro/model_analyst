@@ -159,7 +159,98 @@ def _report_texture_count(materials: list[dict[str, Any]]) -> int:
     return count
 
 
-def _build_report(source_url: str, file_name: str, engine: str, analysis: dict[str, Any], standard: dict[str, Any], expert: dict[str, Any]) -> dict[str, Any]:
+def _first_mesh_value(meshes: list[dict[str, Any]], key: str) -> Any:
+    values = [mesh.get(key) for mesh in meshes if isinstance(mesh, dict) and mesh.get(key) is not None]
+    if not values:
+        return None
+    return values[0] if len(values) == 1 else values
+
+
+def _build_summary(source_url: str, file_name: str, engine: str, analysis: dict[str, Any], standard: dict[str, Any], expert: dict[str, Any], finished_at: float) -> dict[str, Any]:
+    summary = analysis.get("summary") if isinstance(analysis.get("summary"), dict) else {}
+    meshes = analysis.get("meshes") if isinstance(analysis.get("meshes"), list) else []
+    computed = expert.get("computed_metrics") or {}
+    model_type_profile = expert.get("model_type_profile") or {}
+    return {
+        "model": {
+            "source_url": source_url,
+            "file_name": file_name,
+            "analysis_engine": engine,
+            "asset_retention_seconds": TASK_RETENTION_SECONDS,
+            "assets_expires_at": finished_at + TASK_RETENTION_SECONDS,
+        },
+        "counts": {
+            "mesh_count": computed.get("mesh_count") or summary.get("mesh_count"),
+            "vertices": computed.get("vertices") or summary.get("total_vertices"),
+            "faces": computed.get("faces") or summary.get("total_faces"),
+            "triangles": computed.get("triangles") or summary.get("total_triangles"),
+            "material_count": computed.get("material_count") or summary.get("material_count"),
+            "texture_count": computed.get("texture_count"),
+            "armature_count": computed.get("armature_count") or summary.get("armature_count"),
+            "animation_count": computed.get("animation_count") or summary.get("animation_count"),
+        },
+        "quality": {
+            "is_standard": standard.get("is_standard"),
+            "label": standard.get("label"),
+            "severity": standard.get("severity"),
+            "reason_text": standard.get("reason_text"),
+        },
+        "professional": {
+            "passed": expert.get("passed"),
+            "level": expert.get("level"),
+            "detected_types": model_type_profile.get("detected_types") or [],
+        },
+        "model_types": {
+            "white_mesh_model": model_type_profile.get("white_mesh_model"),
+            "rigged_model": model_type_profile.get("rigged_model"),
+            "animated_model": model_type_profile.get("animated_model"),
+            "textured_model": model_type_profile.get("textured_model"),
+            "pbr_model": model_type_profile.get("pbr_model"),
+            "multi_part_model": model_type_profile.get("multi_part_model"),
+            "detected_types": model_type_profile.get("detected_types") or [],
+        },
+        "geometry_flags": {
+            "has_uv": any(bool(mesh.get("has_uv")) for mesh in meshes if isinstance(mesh, dict)),
+            "is_manifold": _first_mesh_value(meshes, "is_manifold"),
+            "non_manifold_edge_count": computed.get("non_manifold_edge_count") or summary.get("non_manifold_edge_count"),
+            "boundary_edge_count": computed.get("boundary_edge_count") or summary.get("boundary_edge_count"),
+            "zero_area_faces": computed.get("zero_area_faces") or summary.get("zero_area_faces"),
+            "degenerate_face_count": computed.get("degenerate_face_count"),
+            "duplicate_triangle_count": computed.get("duplicate_triangle_count"),
+            "self_intersection_count": computed.get("self_intersection_count") or summary.get("self_intersection_count"),
+            "component_count": computed.get("component_count"),
+            "bad_normal_alignment_vertices": computed.get("bad_normal_alignment_vertices"),
+            "opposite_normal_vertices": computed.get("opposite_normal_vertices"),
+            "uv_zero_area_faces": computed.get("uv_zero_area_faces"),
+        },
+        "material_flags": {
+            "has_texture_model": computed.get("has_texture_model"),
+            "has_pbr_model": computed.get("has_pbr_model"),
+            "pbr_channels": computed.get("pbr_channels"),
+            "texture_channels": computed.get("texture_channels") or [],
+            "texture_clarity_counts": computed.get("texture_clarity_counts") or {},
+            "missing_image_count": computed.get("missing_image_count"),
+            "unpacked_external_missing_count": computed.get("unpacked_external_missing_count"),
+            "unused_image_count": computed.get("unused_image_count"),
+            "alpha_material_count": computed.get("alpha_material_count"),
+            "displacement_material_count": computed.get("displacement_material_count"),
+        },
+        "rig_animation_flags": {
+            "has_rigged_model": computed.get("has_rigged_model"),
+            "has_animation": computed.get("has_animation"),
+            "armature_count": computed.get("armature_count") or summary.get("armature_count"),
+            "bone_count": computed.get("bone_count"),
+            "animation_count": computed.get("animation_count") or summary.get("animation_count"),
+            "animation_frame_count": computed.get("animation_frame_count"),
+            "weight_mesh_count": computed.get("weight_mesh_count"),
+            "non_normalized_weight_vertices": computed.get("non_normalized_weight_vertices"),
+            "zero_weight_vertices": computed.get("zero_weight_vertices"),
+        },
+    }
+
+
+def _build_result(source_url: str, file_name: str, engine: str, analysis: dict[str, Any], standard: dict[str, Any], expert_result: dict[str, Any], finished_at: float) -> dict[str, Any]:
+    expert = expert_result["expert_analysis"]
     meshes = analysis.get("meshes") or []
     materials = analysis.get("materials") or []
     geometry = _mesh_report(meshes)
@@ -172,17 +263,12 @@ def _build_report(source_url: str, file_name: str, engine: str, analysis: dict[s
     }
     validation["passed"] = all(value is True for key, value in validation.items() if key != "analysis_engine")
     return {
-        "model": {
-            "source_url": source_url,
-            "file_name": file_name,
-            "analysis_engine": engine,
-        },
-        "geometry": geometry,
-        "materials": _material_report(materials),
+        "summary": _build_summary(source_url, file_name, engine, analysis, standard, expert, finished_at),
         "quality": {
             "is_standard": standard.get("is_standard"),
             "label": standard.get("label"),
             "severity": standard.get("severity"),
+            "rules": standard.get("rules") or [],
             "metrics": standard.get("metrics"),
             "reasons": standard.get("reasons") or [],
             "reason_text": standard.get("reason_text"),
@@ -197,7 +283,16 @@ def _build_report(source_url: str, file_name: str, engine: str, analysis: dict[s
             "issues": expert.get("issues") or [],
             "coverage_notes": expert.get("coverage_notes") or [],
         },
+        "geometry": geometry,
+        "materials": _material_report(materials),
         "validation": validation,
+        "details": {
+            "computed_metrics": computed,
+            "texture_resolution_summary": expert.get("texture_resolution_summary") or [],
+            "expert_skill": expert_result["skill"],
+            "expert_standard": expert_result["expert_standard"],
+            "raw_analysis": analysis,
+        },
     }
 
 
@@ -214,23 +309,7 @@ async def _process_analysis_task(task_id: str, source_url: str, public_base_url:
             finished_at = now()
             standard = quality_status_from_analysis(analysis_data)
             expert_result = analyze_with_3d_expert_skill(analysis_data, standard)
-            expert_analysis = expert_result["expert_analysis"]
-            report = _build_report(source_url, file_name, engine, analysis_data, standard, expert_analysis)
-            result = {
-                "standard": standard,
-                "expert_skill": expert_result["skill"],
-                "expert_standard": expert_result["expert_standard"],
-                "expert_analysis": expert_analysis,
-                "report": report,
-                "result": {
-                    "source_url": source_url,
-                    "file_name": file_name,
-                    "analysis_engine": engine,
-                    "asset_retention_seconds": TASK_RETENTION_SECONDS,
-                    "assets_expires_at": finished_at + TASK_RETENTION_SECONDS,
-                    "analysis": analysis_data,
-                },
-            }
+            result = _build_result(source_url, file_name, engine, analysis_data, standard, expert_result, finished_at)
             await update_task(
                 task_id,
                 status="succeeded",
