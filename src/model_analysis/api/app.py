@@ -221,6 +221,7 @@ def _summary_parameters(analysis: dict[str, Any], computed: dict[str, Any]) -> d
     return {
         "textures": bool(textures),
         "pbr": bool(pbr),
+        "PBR_1": bool(computed.get("PBR_1")),
         "quad_mesh": _mesh_bool_all(meshes, "quad_mesh"),
         "low_poly": faces < 10000,
         "uv_export": _mesh_bool_any(meshes, "uv_export", "has_uv"),
@@ -303,7 +304,10 @@ def _build_summary(source_url: str, file_name: str, engine: str, analysis: dict[
         "material_flags": {
             "has_texture_model": computed.get("has_texture_model"),
             "has_pbr_model": computed.get("has_pbr_model"),
+            "PBR_1": computed.get("PBR_1"),
             "pbr_channels": computed.get("pbr_channels"),
+            "pbr_texture_suite": computed.get("pbr_texture_suite"),
+            "pbr_param_channels": computed.get("pbr_param_channels") or [],
             "texture_channels": computed.get("texture_channels") or [],
             "texture_clarity_counts": computed.get("texture_clarity_counts") or {},
             "missing_image_count": computed.get("missing_image_count"),

@@ -216,7 +216,8 @@ GET /tasks/{task_id}
 | 用例写法 | 字段路径 | 类型 | 说明 |
 | --- | --- | --- | --- |
 | `模型 textures=true` | `summary.parameters.textures` | boolean | 是否包含贴图。 |
-| `模型 pbr=true` | `summary.parameters.pbr` | boolean | 是否为 PBR 材质。 |
+| `模型 pbr=true` | `summary.parameters.pbr` | boolean | 是否具备核心 PBR 贴图套装；要求贴图通道包含 Base Color、Normal、Roughness。 |
+| `模型 PBR_1=true` | `summary.parameters.PBR_1` | boolean | 旧版宽松 PBR 判定；检测到 Base Color/Normal/Roughness/Metallic 任一贴图通道或 PBR 参数即为 true。 |
 | `模型 quad_mesh=true` | `summary.parameters.quad_mesh` | boolean/null | 是否全四边面；所有 mesh 都是四边面时为 true，无法判断时为 null。 |
 | `模型 low_poly=true` | `summary.parameters.low_poly` | boolean | 是否低模；规则为 `faces < 10000`。 |
 | `模型 uv_export=true` | `summary.parameters.uv_export` | boolean | 是否有 UV 坐标。 |
@@ -298,7 +299,7 @@ GET /tasks/{task_id}
 | `summary.professional.detected_types` | string[] | 识别出的模型类型。 |
 | `summary.model_types` | object | 白模、贴图、PBR、绑骨、动画、多 part 等模型类型布尔标记。 |
 | `summary.geometry_flags` | object | 拓扑、边界、非流形、自相交、UV 等几何标记。 |
-| `summary.material_flags` | object | 贴图、PBR 通道、缺失贴图、未使用贴图等材质标记。 |
+| `summary.material_flags` | object | 贴图、PBR 贴图套装、PBR_1 旧口径、缺失贴图、未使用贴图等材质标记。 |
 | `summary.rig_animation_flags` | object | 骨架、骨骼、动画、权重等绑定动画标记。 |
 
 ## 10. `result.quality`

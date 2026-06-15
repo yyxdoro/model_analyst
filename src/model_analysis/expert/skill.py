@@ -198,9 +198,17 @@ def _material_metrics(materials: list[dict[str, Any]]) -> dict[str, Any]:
 
     has_base_color = any(c in channels for c in {"base_color", "basecolor", "base_colour", "color", "diffuse"})
     has_normal = any("normal" in c for c in channels)
-    has_roughness = any("roughness" in c for c in channels) or "roughness" in pbr_param_names
-    has_metallic = any("metallic" in c or "metalness" in c for c in channels) or "metallic" in pbr_param_names
-    has_pbr = has_base_color or has_normal or has_roughness or has_metallic or bool(pbr_param_names)
+    has_roughness_texture = any("roughness" in c for c in channels)
+    has_metallic_texture = any("metallic" in c or "metalness" in c for c in channels)
+    legacy_has_roughness = has_roughness_texture or "roughness" in pbr_param_names
+    legacy_has_metallic = has_metallic_texture or "metallic" in pbr_param_names
+    legacy_has_pbr = has_base_color or has_normal or legacy_has_roughness or legacy_has_metallic or bool(pbr_param_names)
+    pbr_suite_missing = [name for name, exists in (
+        ("base_color", has_base_color),
+        ("normal", has_normal),
+        ("roughness", has_roughness_texture),
+    ) if not exists]
+    has_pbr = not pbr_suite_missing
 
     texture_resolutions.sort(key=lambda item: (-(item["resolution"][0] * item["resolution"][1]), str(item.get("channel") or ""), str(item.get("image") or "")))
 
@@ -217,12 +225,20 @@ def _material_metrics(materials: list[dict[str, Any]]) -> dict[str, Any]:
         "displacement_material_count": displacement_materials,
         "has_texture_model": texture_count > 0,
         "has_pbr_model": has_pbr,
+        "PBR_1": legacy_has_pbr,
         "pbr_channels": {
             "base_color": has_base_color,
             "normal": has_normal,
-            "roughness": has_roughness,
-            "metallic": has_metallic,
+            "roughness": has_roughness_texture,
+            "metallic": has_metallic_texture,
         },
+        "pbr_texture_suite": {
+            "complete": has_pbr,
+            "required_channels": ["base_color", "normal", "roughness"],
+            "optional_channels": ["metallic"],
+            "missing_channels": pbr_suite_missing,
+        },
+        "pbr_param_channels": sorted(pbr_param_names),
     }
 
 
@@ -345,7 +361,7 @@ def _evaluate(metrics: dict[str, Any]) -> list[dict[str, Any]]:
         if metrics["unused_image_count"] > 0:
             issues.append(_issue("unused_texture", "notice", "存在未使用贴图节点，可能造成包体冗余", {"unused_image_count": metrics["unused_image_count"]}, "建议清理未连接或未被材质使用的图片节点。"))
 
-    if metrics["has_pbr_model"]:
+    if metrics["PBR_1"]:
         pbr = metrics["pbr_channels"]
         missing = [name for name in ("base_color", "normal", "roughness") if not pbr.get(name)]
         if missing:
