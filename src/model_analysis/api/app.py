@@ -208,11 +208,21 @@ def _bounds_value(meshes: list[dict[str, Any]], axis: str) -> Optional[float]:
 
 
 def _summary_parameters(analysis: dict[str, Any], computed: dict[str, Any]) -> dict[str, Any]:
+    summary = analysis.get("summary") if isinstance(analysis.get("summary"), dict) else {}
     meshes = _summary_source_meshes(analysis)
+    merged_meshes = analysis.get("meshes") if isinstance(analysis.get("meshes"), list) else []
     armatures = analysis.get("armatures") if isinstance(analysis.get("armatures"), list) else []
     animations = analysis.get("animations") if isinstance(analysis.get("animations"), list) else []
-    faces = computed.get("faces") if computed.get("faces") is not None else sum(_mesh_number(mesh, "faces") for mesh in meshes)
-    vertices = computed.get("vertices") if computed.get("vertices") is not None else sum(_mesh_number(mesh, "vertices") for mesh in meshes)
+    faces = computed.get("faces")
+    if faces is None:
+        faces = summary.get("total_faces")
+    if faces is None:
+        faces = sum(_mesh_number(mesh, "faces") for mesh in merged_meshes or meshes)
+    vertices = computed.get("vertices")
+    if vertices is None:
+        vertices = summary.get("total_vertices")
+    if vertices is None:
+        vertices = sum(_mesh_number(mesh, "vertices") for mesh in merged_meshes or meshes)
     armature_count = computed.get("armature_count") if computed.get("armature_count") is not None else len(armatures)
     animation_count = computed.get("animation_count") if computed.get("animation_count") is not None else len(animations)
     bone_count = computed.get("bone_count") if computed.get("bone_count") is not None else sum(_mesh_number(armature, "bones") for armature in armatures)
