@@ -71,6 +71,7 @@ def _validate_public_url(url: str) -> None:
 
 async def download_model(url: str) -> tuple[Path, str]:
     _validate_public_url(url)
+    local_path: Path | None = None
     async with httpx.AsyncClient(follow_redirects=True, timeout=120.0) as client:
         try:
             async with client.stream("GET", url) as response:
@@ -97,4 +98,10 @@ async def download_model(url: str) -> tuple[Path, str]:
         except HTTPException:
             raise
         except httpx.HTTPError as exc:
+            if local_path:
+                local_path.unlink(missing_ok=True)
             raise _http_error(400, "DOWNLOAD_FAILED", "URL 下载失败", str(exc)) from exc
+        except Exception:
+            if local_path:
+                local_path.unlink(missing_ok=True)
+            raise

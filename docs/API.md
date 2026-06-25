@@ -219,7 +219,7 @@ GET /tasks/{task_id}
 | `模型 pbr=true` | `summary.parameters.pbr` | boolean | 是否具备核心 PBR 贴图套装；要求贴图通道包含 Base Color、Normal、Roughness。 |
 | `模型 PBR_1=true` | `summary.parameters.PBR_1` | boolean | 旧版宽松 PBR 判定；检测到 Base Color/Normal/Roughness/Metallic 任一贴图通道或 PBR 参数即为 true。 |
 | `模型 quad_mesh=true` | `summary.parameters.quad_mesh` | boolean/null | 是否全四边面；所有 mesh 都是四边面时为 true，无法判断时为 null。 |
-| `模型 low_poly=true` | `summary.parameters.low_poly` | boolean | 是否低模；规则为 `faces < 10000`。 |
+| `模型 low_poly=true` | `summary.parameters.low_poly` | boolean | 是否低模；规则为 `faces < 20000`。 |
 | `模型 uv_export=true` | `summary.parameters.uv_export` | boolean | 是否有 UV 坐标。 |
 | `模型 armature=true` | `summary.parameters.armature` | boolean | 是否带骨架。 |
 | `模型 armature_count=N` | `summary.parameters.armature_count` | number | 骨架数量。 |
@@ -592,6 +592,8 @@ curl "http://34.219.48.53:8000/tasks/${TASK_ID}"
 | `MAX_DOWNLOAD_BYTES` | `314572800` | 单文件最大下载字节数。 |
 | `MAX_CONCURRENT_JOBS` | `10` | 最大并发分析任务数。 |
 | `TASK_RETENTION_SECONDS` | `86400` | 任务结果保留秒数。 |
+| `CLEANUP_INTERVAL_SECONDS` | `1800` | 后台缓存清理间隔秒数。 |
+| `STALE_DOWNLOAD_SECONDS` | `21600` | 崩溃或异常中断后残留下载文件保留秒数。 |
 | `PUBLIC_BASE_URL` | 空 | 对外可访问服务地址；配置后贴图返回完整 URL。 |
 | `BLENDER_BIN` | `/Applications/Blender.app/Contents/MacOS/Blender` | Blender 可执行文件路径。 |
 | `PORT` | `8000` | `python main.py` 启动端口。 |

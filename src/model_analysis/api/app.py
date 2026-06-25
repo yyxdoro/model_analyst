@@ -1,21 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import shutil
 import uuid
+from contextlib import asynccontextmanager, suppress
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 from model_analysis.api.schemas import AnalyzeRequest
-from model_analysis.core.config import ASSET_DIR, ASSET_ROUTE, MAX_CONCURRENT_JOBS, PUBLIC_BASE_URL, TASK_RETENTION_SECONDS
+from model_analysis.core.config import ASSET_DIR, ASSET_ROUTE, CLEANUP_INTERVAL_SECONDS, MAX_CONCURRENT_JOBS, PUBLIC_BASE_URL, TASK_RETENTION_SECONDS
 from model_analysis.expert.skill import analyze_with_3d_expert_skill
 from model_analysis.services.analysis_runner import run_model_analysis
 from model_analysis.services.downloader import download_model
 from model_analysis.services.quality import quality_status_from_analysis
 from model_analysis.services.task_store import (
     cleanup_finished_tasks,
+    cleanup_runtime_cache,
     create_task,
     get_task as get_stored_task,
     now,
@@ -23,7 +26,34 @@ from model_analysis.services.task_store import (
     update_task,
 )
 
-app = FastAPI(title="Model Analysis API", version="1.1.0")
+logger = logging.getLogger(__name__)
+
+
+async def _cleanup_loop() -> None:
+    while True:
+        try:
+            await cleanup_runtime_cache()
+        except Exception:
+            logger.exception("runtime cache cleanup failed")
+        await asyncio.sleep(max(CLEANUP_INTERVAL_SECONDS, 60))
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        await cleanup_runtime_cache()
+    except Exception:
+        logger.exception("startup cache cleanup failed")
+    cleanup_task = asyncio.create_task(_cleanup_loop())
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await cleanup_task
+
+
+app = FastAPI(title="Model Analysis API", version="1.1.0", lifespan=lifespan)
 app.mount(ASSET_ROUTE, StaticFiles(directory=ASSET_DIR), name="assets")
 
 _job_semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
@@ -223,7 +253,7 @@ def _summary_parameters(analysis: dict[str, Any], computed: dict[str, Any]) -> d
         "pbr": bool(pbr),
         "PBR_1": bool(computed.get("PBR_1")),
         "quad_mesh": _mesh_bool_all(meshes, "quad_mesh"),
-        "low_poly": faces < 10000,
+        "low_poly": faces < 20000,
         "uv_export": _mesh_bool_any(meshes, "uv_export", "has_uv"),
         "armature": bool(armature_count),
         "armature_count": armature_count,

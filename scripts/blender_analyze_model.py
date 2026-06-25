@@ -325,7 +325,7 @@ def analyze_mesh(obj):
             "z": round(size.z, 4)
         },
         "quad_mesh": bool(face_vertex_counts) and all(count == 4 for count in face_vertex_counts),
-        "low_poly": len(mesh.polygons) < 10000,
+        "low_poly": len(mesh.polygons) < 20000,
         "uv_export": len(mesh.uv_layers) > 0,
         "has_normals": normal_count > 0,
         "normals_valid": normal_count > 0 and zero_normals == 0,
