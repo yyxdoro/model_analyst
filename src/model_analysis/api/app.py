@@ -233,7 +233,7 @@ def _summary_parameters(analysis: dict[str, Any], computed: dict[str, Any]) -> d
         "pbr": bool(pbr),
         "PBR_1": bool(computed.get("PBR_1")),
         "quad_mesh": _mesh_bool_all(meshes, "quad_mesh"),
-        "low_poly": faces < 10000,
+        "low_poly": faces < 20000,
         "uv_export": _mesh_bool_any(meshes, "uv_export", "has_uv"),
         "armature": bool(armature_count),
         "armature_count": armature_count,
