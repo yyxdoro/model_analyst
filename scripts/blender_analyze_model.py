@@ -300,6 +300,8 @@ def analyze_mesh(obj):
         inward_ratio = None
     
     face_vertex_counts = [len(p.vertices) for p in mesh.polygons]
+    triangle_faces = sum(1 for count in face_vertex_counts if count == 3)
+    quad_faces = sum(1 for count in face_vertex_counts if count == 4)
     normal_count = 0
     zero_normals = 0
     try:
@@ -314,6 +316,8 @@ def analyze_mesh(obj):
         "vertices": len(mesh.vertices),
         "faces": len(mesh.polygons),
         "triangles": sum(count - 2 for count in face_vertex_counts),
+        "triangle_faces": triangle_faces,
+        "quad_faces": quad_faces,
         "bounds": {
             "x": round(size.x, 4),
             "y": round(size.y, 4),
@@ -324,7 +328,7 @@ def analyze_mesh(obj):
             "y": round(size.y, 4),
             "z": round(size.z, 4)
         },
-        "quad_mesh": bool(face_vertex_counts) and all(count == 4 for count in face_vertex_counts),
+        "quad_mesh": quad_faces > triangle_faces,
         "low_poly": len(mesh.polygons) < 10000,
         "uv_export": len(mesh.uv_layers) > 0,
         "has_normals": normal_count > 0,

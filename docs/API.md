@@ -218,7 +218,7 @@ GET /tasks/{task_id}
 | `模型 textures=true` | `summary.parameters.textures` | boolean | 是否包含贴图。 |
 | `模型 pbr=true` | `summary.parameters.pbr` | boolean | 是否具备核心 PBR 贴图套装；要求贴图通道包含 Base Color、Normal、Roughness。 |
 | `模型 PBR_1=true` | `summary.parameters.PBR_1` | boolean | 旧版宽松 PBR 判定；检测到 Base Color/Normal/Roughness/Metallic 任一贴图通道或 PBR 参数即为 true。 |
-| `模型 quad_mesh=true` | `summary.parameters.quad_mesh` | boolean/null | 是否全四边面；所有 mesh 都是四边面时为 true，无法判断时为 null。 |
+| `模型 quad_mesh=true` | `summary.parameters.quad_mesh` | boolean/null | 是否四边面占多数；原始四边面数大于原始三角面数时为 true，四边面少于或等于三角面时为 false，无法判断时为 null。 |
 | `模型 low_poly=true` | `summary.parameters.low_poly` | boolean | 是否低模；规则为 `faces < 10000`。 |
 | `模型 uv_export=true` | `summary.parameters.uv_export` | boolean | 是否有 UV 坐标。 |
 | `模型 armature=true` | `summary.parameters.armature` | boolean | 是否带骨架。 |
@@ -268,6 +268,8 @@ GET /tasks/{task_id}
 | `summary.counts.vertices` | number/null | 顶点总数。 |
 | `summary.counts.faces` | number/null | 面数总数。红线为 `faces > 2,000,000`。 |
 | `summary.counts.triangles` | number/null | 三角面总数。 |
+| `summary.counts.triangle_faces` | number/null | 原始三角面数量。 |
+| `summary.counts.quad_faces` | number/null | 原始四边面数量。 |
 | `summary.counts.material_count` | number/null | 材质数量。 |
 | `summary.counts.texture_count` | number/null | 贴图通道数量，不等同于唯一图片数量。 |
 | `summary.counts.armature_count` | number/null | 骨架数量。 |
@@ -342,6 +344,8 @@ GET /tasks/{task_id}
 | `geometry.meshes[].vertices` | number/null | 当前 mesh 顶点数。 |
 | `geometry.meshes[].faces` | number/null | 当前 mesh 面数。 |
 | `geometry.meshes[].triangles` | number/null | 当前 mesh 三角面数。 |
+| `geometry.meshes[].triangle_faces` | number/null | 当前 mesh 原始三角面数量。 |
+| `geometry.meshes[].quad_faces` | number/null | 当前 mesh 原始四边面数量。 |
 | `geometry.meshes[].dimensions` | object/null | 包围盒尺寸。 |
 | `geometry.meshes[].has_uv` | boolean/null | 是否有 UV。 |
 | `geometry.meshes[].is_manifold` | boolean/null | 是否为流形网格。 |

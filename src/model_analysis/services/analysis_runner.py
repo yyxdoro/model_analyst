@@ -76,6 +76,8 @@ def _summary(native: Optional[dict[str, Any]], blender: Optional[dict[str, Any]]
         "total_vertices": sum(int(mesh.get("vertices") or 0) for mesh in meshes),
         "total_faces": sum(int(mesh.get("faces") or 0) for mesh in meshes),
         "total_triangles": sum(int(mesh.get("triangles") or 0) for mesh in meshes),
+        "total_triangle_faces": sum(int(mesh.get("triangle_faces") or 0) for mesh in meshes),
+        "total_quad_faces": sum(int(mesh.get("quad_faces") or 0) for mesh in meshes),
         "zero_area_faces": sum(int(mesh.get("zero_area_faces") or 0) for mesh in meshes),
         "non_manifold_edge_count": sum(int(mesh.get("non_manifold_edge_count") or 0) for mesh in meshes),
         "boundary_edge_count": sum(int(mesh.get("boundary_edge_count") or 0) for mesh in meshes),

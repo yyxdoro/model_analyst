@@ -60,6 +60,8 @@ def _mesh_report(meshes: list[dict[str, Any]]) -> dict[str, Any]:
                 "vertices": mesh.get("vertices"),
                 "faces": mesh.get("faces"),
                 "triangles": mesh.get("triangles"),
+                "triangle_faces": mesh.get("triangle_faces"),
+                "quad_faces": mesh.get("quad_faces"),
                 "dimensions": mesh.get("dimensions"),
                 "has_uv": mesh.get("has_uv"),
                 "is_manifold": mesh.get("is_manifold"),
@@ -192,6 +194,14 @@ def _mesh_bool_all(meshes: list[dict[str, Any]], key: str) -> Optional[bool]:
     return all(values)
 
 
+def _quad_mesh_by_face_counts(meshes: list[dict[str, Any]]) -> Optional[bool]:
+    triangle_faces = sum(_mesh_number(mesh, "triangle_faces") for mesh in meshes if isinstance(mesh, dict))
+    quad_faces = sum(_mesh_number(mesh, "quad_faces") for mesh in meshes if isinstance(mesh, dict))
+    if triangle_faces == 0 and quad_faces == 0:
+        return _mesh_bool_all(meshes, "quad_mesh")
+    return quad_faces > triangle_faces
+
+
 def _bounds_value(meshes: list[dict[str, Any]], axis: str) -> Optional[float]:
     values = []
     for mesh in meshes:
@@ -232,7 +242,7 @@ def _summary_parameters(analysis: dict[str, Any], computed: dict[str, Any]) -> d
         "textures": bool(textures),
         "pbr": bool(pbr),
         "PBR_1": bool(computed.get("PBR_1")),
-        "quad_mesh": _mesh_bool_all(meshes, "quad_mesh"),
+        "quad_mesh": _quad_mesh_by_face_counts(meshes),
         "low_poly": faces < 20000,
         "uv_export": _mesh_bool_any(meshes, "uv_export", "has_uv"),
         "armature": bool(armature_count),
@@ -272,6 +282,8 @@ def _build_summary(source_url: str, file_name: str, engine: str, analysis: dict[
             "vertices": computed.get("vertices") or summary.get("total_vertices"),
             "faces": computed.get("faces") or summary.get("total_faces"),
             "triangles": computed.get("triangles") or summary.get("total_triangles"),
+            "triangle_faces": summary.get("total_triangle_faces"),
+            "quad_faces": summary.get("total_quad_faces"),
             "material_count": computed.get("material_count") or summary.get("material_count"),
             "texture_count": computed.get("texture_count"),
             "armature_count": computed.get("armature_count") or summary.get("armature_count"),
