@@ -23,13 +23,24 @@ TASK_RETENTION_SECONDS = int(os.getenv("TASK_RETENTION_SECONDS", str(24 * 3600))
 ASSET_ROUTE = "/assets"
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
-# 私有 S3 / S3 兼容存储（百度 BOS、MinIO 等）下载凭证。凭证留服务端，不经请求体传递。
-# 请求用 s3://bucket/key 标识对象；仅当 S3_ACCESS_KEY 且 S3_SECRET_KEY 都非空时视为「已配置」。
+
+def _csv_env(name: str, default: str) -> list[str]:
+    return [b.strip() for b in os.getenv(name, default).split(",") if b.strip()]
+
+
+# 对象存储下载凭证（收到 s3://bucket/key 或裸 object key 时用）。凭证留服务端，不经请求体传递。
+# 两套后端：AWS S3 与 百度 BOS。按 URI 里的桶名归属选用对应凭证（桶在 BOS_BUCKETS 里 → 用 BOS）。
+# —— AWS S3 ——
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
 S3_SESSION_TOKEN = os.getenv("S3_SESSION_TOKEN", "")  # 可选，临时凭证
-S3_REGION = os.getenv("S3_REGION", "")  # AWS 必填，如 us-west-2；兼容存储可留空或占位
-S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "")  # 仅 BOS/MinIO 等兼容存储时设置
+S3_REGION = os.getenv("S3_REGION", "us-west-2")
+S3_BUCKETS = _csv_env("S3_BUCKETS", "tripo-data,vast-plugin-data")  # AWS 侧桶（逗号分隔）
+# —— 百度 BOS（S3 兼容，需独立 endpoint + 凭证）——
+BOS_ACCESS_KEY = os.getenv("BOS_ACCESS_KEY", "")
+BOS_SECRET_KEY = os.getenv("BOS_SECRET_KEY", "")
+BOS_ENDPOINT = os.getenv("BOS_ENDPOINT", "")
+BOS_BUCKETS = _csv_env("BOS_BUCKETS", "cn-openapi,cn-openapi-test,tripo-studio-cn-data-prod,tripo-studio-cn-data-test")
 
 BLENDER_BIN = os.getenv("BLENDER_BIN", "/Applications/Blender.app/Contents/MacOS/Blender")
 BLENDER_SCRIPT = PROJECT_ROOT / "scripts" / "blender_analyze_model.py"

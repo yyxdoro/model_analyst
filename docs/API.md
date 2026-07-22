@@ -81,11 +81,11 @@ Content-Type: application/json
 }
 ```
 
-从私有 S3（或 S3 兼容存储）拉取时，`url` 传 `s3://bucket/key`（凭证由服务端 `.env` 配置）：
+从私有对象存储拉取时，`url` 传 `s3://bucket/key`（凭证由服务端 `.env` 配置，AWS/BOS 均支持，按桶名路由）：
 
 ```json
 {
-  "url": "s3://my-bucket/models/foo.glb"
+  "url": "s3://cn-openapi/tcli_f5dd6b72952d43b99fdbe8fac1d45c1b/20260721/2fb24398-b5e7-4a00-b556-d8757e7f852b"
 }
 ```
 
@@ -93,7 +93,7 @@ Content-Type: application/json
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `url` | string | 是 | 3D 模型文件地址。公网 `http/https`；或 `s3://bucket/key`（从服务端 `.env` 配置的私有桶拉取，AK/SK 不经请求传递）。 |
+| `url` | string | 是 | 3D 模型文件地址。公网 `http/https`；或 `s3://bucket/key`（从服务端 `.env` 配置的私有桶拉取，按桶名自动选 AWS/BOS 凭证，AK/SK 不经请求传递）。key 无扩展名时按 `.glb` 处理。 |
 
 ### 成功响应
 
@@ -579,9 +579,10 @@ GET /tasks/{task_id}
 | `DOWNLOAD_HTTP_ERROR` | 远程下载返回非 200 HTTP 状态。 |
 | `DOWNLOAD_FAILED` | 网络请求或下载过程失败。 |
 | `DOWNLOAD_TOO_LARGE` | 文件超过大小限制。 |
-| `S3_NOT_CONFIGURED` | 请求用 `s3://` 但服务端未配置 `S3_ACCESS_KEY`/`S3_SECRET_KEY`。 |
+| `S3_NOT_CONFIGURED` | 请求用 `s3://`/裸 key，但服务端未配置对应后端（AWS 或 BOS）的凭证。 |
 | `S3_INVALID_URI` | `s3://` URI 格式非法（缺 bucket 或 key）。 |
-| `S3_DOWNLOAD_FAILED` | S3 对象下载失败（如 NoSuchKey、AccessDenied、区域/端点错误）。 |
+| `S3_DOWNLOAD_FAILED` | S3/BOS 对象下载失败（如 NoSuchKey、AccessDenied、区域/端点错误）。 |
+| `S3_KEY_NOT_FOUND` | 裸 object key 在所有候选桶里都没找到。 |
 | `NATIVE_ANALYSIS_FAILED` | native 分析失败。 |
 | `BLENDER_NOT_FOUND` | 找不到 Blender 可执行文件。 |
 | `BLENDER_SCRIPT_NOT_FOUND` | 找不到 Blender 分析脚本。 |
@@ -608,10 +609,12 @@ curl "http://34.219.48.53:8000/tasks/${TASK_ID}"
 | `MAX_CONCURRENT_JOBS` | `10` | 最大并发分析任务数。 |
 | `TASK_RETENTION_SECONDS` | `86400` | 任务结果保留秒数。 |
 | `PUBLIC_BASE_URL` | 空 | 对外可访问服务地址；配置后贴图返回完整 URL。 |
-| `S3_ACCESS_KEY` | 空 | S3 访问密钥（Access Key ID）；与 `S3_SECRET_KEY` 都非空时启用 `s3://` 下载。 |
-| `S3_SECRET_KEY` | 空 | S3 密钥（Secret Access Key）。 |
-| `S3_REGION` | 空 | S3 区域，如 `us-west-2`；标准 AWS S3 必填，兼容存储可留空或占位。 |
-| `S3_ENDPOINT_URL` | 空 | 自定义 S3 端点；仅对接 BOS/MinIO 等兼容存储时设置，标准 AWS 留空。 |
-| `S3_SESSION_TOKEN` | 空 | 可选，临时凭证的 session token。 |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 空 | AWS S3 读凭证；下载 `S3_BUCKETS` 里的桶时使用。 |
+| `S3_REGION` | `us-west-2` | AWS S3 区域。 |
+| `S3_BUCKETS` | `tripo-data,vast-plugin-data` | AWS 侧候选桶（逗号分隔）；桶名归属由此判定。 |
+| `S3_SESSION_TOKEN` | 空 | 可选，AWS 临时凭证 session token。 |
+| `BOS_ACCESS_KEY` / `BOS_SECRET_KEY` | 空 | 百度 BOS 读凭证；下载 `BOS_BUCKETS` 里的桶时使用。 |
+| `BOS_ENDPOINT` | 空 | BOS 端点（如 `https://s3.bj.bcebos.com`）。 |
+| `BOS_BUCKETS` | `cn-openapi,cn-openapi-test,tripo-studio-cn-data-prod,tripo-studio-cn-data-test` | BOS 侧候选桶（逗号分隔）。 |
 | `BLENDER_BIN` | `/Applications/Blender.app/Contents/MacOS/Blender` | Blender 可执行文件路径。 |
 | `PORT` | `8000` | `python main.py` 启动端口。 |

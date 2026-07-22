@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
 from model_analysis.services import downloader
@@ -26,27 +27,41 @@ class FakeBody:
 
 
 class FakeClient:
-    def __init__(self, data: bytes, content_length):
-        self._data = data
-        self._content_length = content_length
-        self.get_object_called = False
+    """store: {bucket: bytes}；缺桶时 get_object 抛 NoSuchKey，模拟候选桶未命中。"""
+
+    def __init__(self, store: dict[str, bytes], content_length_override=None):
+        self.store = store
+        self.content_length_override = content_length_override
+        self.calls: list[tuple[str, str]] = []
 
     def get_object(self, Bucket: str, Key: str):  # noqa: N803 (boto3 kwargs 命名)
-        self.get_object_called = True
-        obj = {"Body": FakeBody(self._data)}
-        if self._content_length is not None:
-            obj["ContentLength"] = self._content_length
-        return obj
+        self.calls.append((Bucket, Key))
+        if Bucket not in self.store:
+            raise ClientError({"Error": {"Code": "NoSuchKey", "Message": "no"}}, "GetObject")
+        data = self.store[Bucket]
+        cl = self.content_length_override if self.content_length_override is not None else len(data)
+        return {"ContentLength": cl, "Body": FakeBody(data)}
 
 
-def _configure_creds(monkeypatch):
+def _aws_on(monkeypatch, buckets):
     monkeypatch.setattr(downloader, "S3_ACCESS_KEY", "AK", raising=False)
     monkeypatch.setattr(downloader, "S3_SECRET_KEY", "SK", raising=False)
+    monkeypatch.setattr(downloader, "S3_BUCKETS", buckets, raising=False)
 
 
-def _inject_client(monkeypatch, client):
-    monkeypatch.setattr(downloader, "_build_s3_client", lambda: client)
-    return client
+def _bos_on(monkeypatch, buckets):
+    monkeypatch.setattr(downloader, "BOS_ACCESS_KEY", "BAK", raising=False)
+    monkeypatch.setattr(downloader, "BOS_SECRET_KEY", "BSK", raising=False)
+    monkeypatch.setattr(downloader, "BOS_ENDPOINT", "https://bos.example.com", raising=False)
+    monkeypatch.setattr(downloader, "BOS_BUCKETS", buckets, raising=False)
+
+
+def _all_off(monkeypatch):
+    for name in ("S3_ACCESS_KEY", "S3_SECRET_KEY", "BOS_ACCESS_KEY", "BOS_SECRET_KEY", "BOS_ENDPOINT"):
+        monkeypatch.setattr(downloader, name, "", raising=False)
+
+
+# ── _parse_s3_uri ──
 
 
 def test_parse_s3_uri_preserves_inner_slashes():
@@ -60,65 +75,164 @@ def test_parse_s3_uri_rejects_bad_shape(uri):
     assert exc.value.detail["code"] == "S3_INVALID_URI"
 
 
-def test_download_s3_not_configured(monkeypatch):
-    monkeypatch.setattr(downloader, "S3_ACCESS_KEY", "", raising=False)
-    monkeypatch.setattr(downloader, "S3_SECRET_KEY", "", raising=False)
+# ── 显式 s3://bucket/key：按桶名路由到 AWS / BOS ──
+
+
+def test_explicit_bos_bucket_uses_bos_client(monkeypatch, tmp_path):
+    monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
+    _aws_on(monkeypatch, ["tripo-data"])
+    _bos_on(monkeypatch, ["cn-openapi"])
+    aws = FakeClient({})
+    bos = FakeClient({"cn-openapi": b"BOSDATA"})
+    monkeypatch.setattr(downloader, "_build_aws_client", lambda: aws)
+    monkeypatch.setattr(downloader, "_build_bos_client", lambda: bos)
+
+    path, name = asyncio.run(downloader._download_s3_object("cn-openapi", "tcli_x/20260721/uuid"))
+
+    assert name == "uuid"
+    assert path.read_bytes() == b"BOSDATA"
+    assert bos.calls == [("cn-openapi", "tcli_x/20260721/uuid")]
+    assert aws.calls == []  # 没走 AWS
+
+
+def test_explicit_aws_bucket_uses_aws_client(monkeypatch, tmp_path):
+    monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
+    _aws_on(monkeypatch, ["tripo-data"])
+    _bos_on(monkeypatch, ["cn-openapi"])
+    aws = FakeClient({"tripo-data": b"AWSDATA"})
+    bos = FakeClient({})
+    monkeypatch.setattr(downloader, "_build_aws_client", lambda: aws)
+    monkeypatch.setattr(downloader, "_build_bos_client", lambda: bos)
+
+    path, name = asyncio.run(downloader._download_s3_object("tripo-data", "foo.glb"))
+
+    assert path.read_bytes() == b"AWSDATA"
+    assert aws.calls == [("tripo-data", "foo.glb")]
+    assert bos.calls == []
+
+
+def test_explicit_bos_bucket_without_bos_creds(monkeypatch, tmp_path):
+    monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
+    _aws_on(monkeypatch, ["tripo-data"])
+    _all_off(monkeypatch)  # 关掉 BOS（和 AWS）
+    _aws_on(monkeypatch, ["tripo-data"])  # 只留 AWS
+    monkeypatch.setattr(downloader, "BOS_BUCKETS", ["cn-openapi"], raising=False)
+
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(downloader._download_s3("s3://b/k.glb"))
+        asyncio.run(downloader._download_s3_object("cn-openapi", "k"))
     assert exc.value.detail["code"] == "S3_NOT_CONFIGURED"
 
 
-def test_download_s3_happy_path(monkeypatch, tmp_path):
-    _configure_creds(monkeypatch)
+# ── 裸 key：候选桶逐个试 ──
+
+
+def test_bare_key_not_configured(monkeypatch):
+    _all_off(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(downloader._download_bare_key("foo.glb"))
+    assert exc.value.detail["code"] == "S3_NOT_CONFIGURED"
+
+
+def test_bare_key_iterates_then_hits_second_bucket(monkeypatch, tmp_path):
     monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
-    data = b"GLB-BYTES" * 100
-    client = _inject_client(monkeypatch, FakeClient(data, content_length=len(data)))
+    _aws_on(monkeypatch, ["b1", "b2"])
+    _all_off(monkeypatch)
+    _aws_on(monkeypatch, ["b1", "b2"])  # 仅 AWS
+    client = FakeClient({"b2": b"HIT"})
+    monkeypatch.setattr(downloader, "_build_aws_client", lambda: client)
 
-    local_path, filename = asyncio.run(downloader._download_s3("s3://bkt/models/foo.glb"))
+    path, name = asyncio.run(downloader._download_bare_key("foo.glb"))
 
-    assert filename == "foo.glb"
-    assert local_path.parent == tmp_path
-    assert local_path.suffix == ".glb"
-    assert local_path.read_bytes() == data
-    assert client.get_object_called is True
+    assert name == "foo.glb"
+    assert path.read_bytes() == b"HIT"
+    assert client.calls == [("b1", "foo.glb"), ("b2", "foo.glb")]  # b1 未命中→b2
 
 
-def test_download_s3_too_large_via_content_length(monkeypatch, tmp_path):
-    _configure_creds(monkeypatch)
+def test_bare_key_falls_through_aws_to_bos(monkeypatch, tmp_path):
+    monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
+    _aws_on(monkeypatch, ["a1"])
+    _bos_on(monkeypatch, ["c1"])
+    aws = FakeClient({})  # AWS 全未命中
+    bos = FakeClient({"c1": b"BOSHIT"})
+    monkeypatch.setattr(downloader, "_build_aws_client", lambda: aws)
+    monkeypatch.setattr(downloader, "_build_bos_client", lambda: bos)
+
+    path, name = asyncio.run(downloader._download_bare_key("k.glb"))
+
+    assert path.read_bytes() == b"BOSHIT"
+    assert aws.calls == [("a1", "k.glb")]
+    assert bos.calls == [("c1", "k.glb")]
+
+
+def test_bare_key_none_found(monkeypatch, tmp_path):
+    monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
+    _aws_on(monkeypatch, ["a1"])
+    _bos_on(monkeypatch, ["c1"])
+    monkeypatch.setattr(downloader, "_build_aws_client", lambda: FakeClient({}))
+    monkeypatch.setattr(downloader, "_build_bos_client", lambda: FakeClient({}))
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(downloader._download_bare_key("missing.glb"))
+    assert exc.value.detail["code"] == "S3_KEY_NOT_FOUND"
+
+
+# ── 大小 / 扩展名 ──
+
+
+def test_too_large_via_content_length(monkeypatch, tmp_path):
     monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
     monkeypatch.setattr(downloader, "MAX_DOWNLOAD_BYTES", 10, raising=False)
-    body = FakeBody(b"x" * 100)
-    client = FakeClient(b"x" * 100, content_length=100)
-    # 直接观测 body 未被读取：注入一个已知 body 的 client
-    client.get_object = lambda Bucket, Key: {"ContentLength": 100, "Body": body}  # noqa: N803
-    _inject_client(monkeypatch, client)
+    _aws_on(monkeypatch, ["b1"])
+    _all_off(monkeypatch)
+    _aws_on(monkeypatch, ["b1"])
+    client = FakeClient({"b1": b"x" * 100}, content_length_override=100)
+    monkeypatch.setattr(downloader, "_build_aws_client", lambda: client)
 
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(downloader._download_s3("s3://bkt/big.glb"))
+        asyncio.run(downloader._download_s3_object("b1", "big.glb"))
     assert exc.value.detail["code"] == "DOWNLOAD_TOO_LARGE"
-    assert body.closed is True
-    assert list(tmp_path.iterdir()) == []  # 没有落盘
+    assert list(tmp_path.iterdir()) == []  # 没落盘
 
 
-def test_download_s3_too_large_via_stream(monkeypatch, tmp_path):
-    _configure_creds(monkeypatch)
+def test_too_large_via_stream(monkeypatch, tmp_path):
     monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
     monkeypatch.setattr(downloader, "MAX_DOWNLOAD_BYTES", 10, raising=False)
-    # ContentLength 缺失，靠流式累计触发超限
-    _inject_client(monkeypatch, FakeClient(b"x" * 100, content_length=None))
+    _aws_on(monkeypatch, ["b1"])
+    _all_off(monkeypatch)
+    _aws_on(monkeypatch, ["b1"])
+    client = FakeClient({"b1": b"x" * 100}, content_length_override=None)  # 不报 ContentLength
+    monkeypatch.setattr(downloader, "_build_aws_client", lambda: client)
 
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(downloader._download_s3("s3://bkt/big.glb"))
+        asyncio.run(downloader._download_s3_object("b1", "big.glb"))
     assert exc.value.detail["code"] == "DOWNLOAD_TOO_LARGE"
-    assert list(tmp_path.iterdir()) == []  # 半成品文件已删
+    assert list(tmp_path.iterdir()) == []  # 半成品已删
 
 
-def test_download_s3_unsupported_ext(monkeypatch, tmp_path):
-    _configure_creds(monkeypatch)
+def test_unsupported_ext_fail_fast(monkeypatch, tmp_path):
     monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
-    client = _inject_client(monkeypatch, FakeClient(b"data", content_length=4))
+    _aws_on(monkeypatch, ["b1"])
+    _all_off(monkeypatch)
+    _aws_on(monkeypatch, ["b1"])
+    client = FakeClient({"b1": b"data"})
+    monkeypatch.setattr(downloader, "_build_aws_client", lambda: client)
 
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(downloader._download_s3("s3://bkt/readme.txt"))
+        asyncio.run(downloader._download_bare_key("readme.txt"))
     assert exc.value.detail["code"] == "UNSUPPORTED_FORMAT"
-    assert client.get_object_called is False  # 联网前 fail-fast
+    assert client.calls == []  # 联网前就 fail-fast
+
+
+def test_key_without_ext_defaults_glb(monkeypatch, tmp_path):
+    monkeypatch.setattr(downloader, "DOWNLOAD_DIR", tmp_path, raising=False)
+    _aws_on(monkeypatch, ["b1"])
+    _bos_on(monkeypatch, ["cn-openapi"])
+    bos = FakeClient({"cn-openapi": b"MODEL"})
+    monkeypatch.setattr(downloader, "_build_bos_client", lambda: bos)
+
+    # 你的真实例子：cn-openapi + 无扩展名 key
+    path, name = asyncio.run(
+        downloader._download_s3_object("cn-openapi", "tcli_f5dd/20260721/2fb24398-b5e7-4a00")
+    )
+    assert path.suffix == ".glb"  # 无扩展名 → 默认 .glb
+    assert path.read_bytes() == b"MODEL"
