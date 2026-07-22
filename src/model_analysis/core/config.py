@@ -30,15 +30,16 @@ def _csv_env(name: str, default: str) -> list[str]:
 
 # 对象存储下载凭证（收到 s3://bucket/key 或裸 object key 时用）。凭证留服务端，不经请求体传递。
 # 两套后端：AWS S3 与 百度 BOS。按 URI 里的桶名归属选用对应凭证（桶在 BOS_BUCKETS 里 → 用 BOS）。
+# 变量名兼容两种：优先 *_READ_*（与 feishu_qa_bot 一致），回退到短名 S3_ACCESS_KEY / BOS_ACCESS_KEY。
 # —— AWS S3 ——
-S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
-S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
+S3_ACCESS_KEY = os.getenv("S3_READ_ACCESS_KEY") or os.getenv("S3_ACCESS_KEY", "")
+S3_SECRET_KEY = os.getenv("S3_READ_SECRET_KEY") or os.getenv("S3_SECRET_KEY", "")
 S3_SESSION_TOKEN = os.getenv("S3_SESSION_TOKEN", "")  # 可选，临时凭证
 S3_REGION = os.getenv("S3_REGION", "us-west-2")
 S3_BUCKETS = _csv_env("S3_BUCKETS", "tripo-data,vast-plugin-data")  # AWS 侧桶（逗号分隔）
 # —— 百度 BOS（S3 兼容，需独立 endpoint + 凭证）——
-BOS_ACCESS_KEY = os.getenv("BOS_ACCESS_KEY", "")
-BOS_SECRET_KEY = os.getenv("BOS_SECRET_KEY", "")
+BOS_ACCESS_KEY = os.getenv("BOS_READ_ACCESS_KEY") or os.getenv("BOS_ACCESS_KEY", "")
+BOS_SECRET_KEY = os.getenv("BOS_READ_SECRET_KEY") or os.getenv("BOS_SECRET_KEY", "")
 BOS_ENDPOINT = os.getenv("BOS_ENDPOINT", "")
 BOS_BUCKETS = _csv_env("BOS_BUCKETS", "cn-openapi,cn-openapi-test,tripo-studio-cn-data-prod,tripo-studio-cn-data-test")
 
